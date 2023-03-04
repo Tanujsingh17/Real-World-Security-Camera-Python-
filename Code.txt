@@ -1,0 +1,112 @@
+
+import cv2
+import time
+import datetime 
+
+webcam = cv2.VideoCapture(0)  ## displaying and accessing webcam video
+
+## We setup a CascadeClassifier using variable named face_cascade and then we passed a classifier(present inside the parenthesis)
+## haarcascade_frontalface_default.xml is our classifier from our base directory(cv2.data.haarcascades)
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')  ## to detect face in an image
+body_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fullbody.xml')  ## to detect body in an image
+
+## recording only when there is detection in our frame when recording had started previously 
+recording = False
+
+## implementing the logic in our security camera for saving the videos at a specific time only when a person is in our frame of webcam
+recording_stopped_time = None
+timer_started = False
+seconds_recorded_after_leaving = 5
+## as soon as someone leaves the frame i still want to record for a certain period of time
+
+## recording and saving our video
+frame_size = (int(webcam.get(3)), int(webcam.get(4)))  ## width and height
+## frame size of the recording video needs to be the exact same as that of the webcam frame size
+
+## setting up the four character code which is our unique indentifier for the specific format in which our video is gonna be saved(mp4)
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+## we are passing this(*'mp4v') string as four parameters in this above function, * helps in decomposing this into four separate arguments('m', 'p', '4', 'v') 
+
+## output stream is where we are gonna write all of our content to
+# outstr = cv2.VideoWriter('Security_Video.mp4', fourcc, 20.0, frame_size)
+## passing the file name, four character codes, frame rate and frame size
+
+while True:
+    extra, frame = webcam.read()  ## reading frame from my webcam, placeholder variable(not required) 'extra'
+
+    ## using face and body cascade, converting my frame to a grayscale image
+    ## all of the classifier requires a grayscale image to do the classification, they will tell the location and presence of any face in our grayscale image
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  ## gives us a new image in grayscale
+    
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)  ## using our classifier, gray is now my frame ie image and 1.3 is my scale factor
+    ## and 5 is minimum no. of neighbours
+    ## my face is made of multiple smaller faces constituted together, and i am only taking 5(lower no. detects more faces) smaller
+    ## faces of my vicinity to get my actual face idea
+    ## above line of code returns list of positions of the faces(x, y, width, height) present in the image
+    ## scale factor determines the speed and the accuracy of this algorithm(its lower value has higher accuracy but slower speed)
+
+    bodies = body_cascade.detectMultiScale(gray, 1.3, 5)
+
+    if len(faces) + len(bodies) > 0:  ## start recording only when we see a(>0) face or a body in our video frame
+        # recording = True
+        if recording:  ## if someone is previously present in our frame ie the recording is already going on after detection then don't stop the recording
+            timer_started = False  ## because we have already detected a body interface, and just continue recording in it only if that person leaves and comes inside
+            ## the frame within a specific period of time
+        else:  ## if we werein't detecting something before
+            recording = True  ## and then someone is detected in the frame for the first time then start recording a new video
+            current_time = datetime.datetime.now().strftime('%d-%m-%Y-%H-%M-%S')  ## getting and formatting the current date and time
+            # outstr = cv2.VideoWriter('Security_Video.mp4', fourcc, 20.0, frame_size)
+            outstr = cv2.VideoWriter(f'{current_time}.mp4', fourcc, 20.0, frame_size)
+            print('...Recording Started!')
+    ## if we detect another face or body, but we are already detecting a face or a body before that then timer started is false ie don't stop recording,
+    ## which we were going to stop as body detected
+    ## but if we werein't detecting something already, the recording is true and now let's start a new video recording whenever i first detect a new body,
+    ## if we hadin't been detecting something previously
+    ## if we had been detecting something previously then add onto that video output stream, we don't need to start a new video
+    ## otherwise we would have a video for every frame
+    ## however i first want to change the output file name for my new video and it should have name as current date and time is
+    
+    elif recording:  ## we were already recording the video previously and the timer was not started,
+                     ## but now timer has started and we have already detected someone before in our frame
+                     ## and if our five seconds has passed when the recording was started in our video then stop the recording
+                     ## imagine may be only one or two seconds have passed since someone has left the frame
+                     ## now all of a sudden i am back in the frame and see a face then we were already detecting something and now the timer started is false
+                     ## now the reason for this is that i have to reset the time because all of a sudden we just saw another person but we have to keep recording
+                     ## and now if the person leaves we have five seconds(more) after they have left in our recording
+                     ## this continues like i come in frame multiple times and there is only one video which maintains and records the entire time of me
+                     ## ie leaving  and coming back, leaving and coming back,...
+                     ## it's just saying that we are not going to stop recording unless it's been five seconds that someone entered the frame 
+                     ## we can start a new recording as soon as our 5 seconds time has elapsed and a new person has entered in our frame
+                     ## other wise it would keep on recording in the same video
+    
+                    ## as time has passed(5 sec) if we are not detecting a body or a face now but we had detected something previously then we are gonna start our
+                    ## timer for when we should end the recording video stream(wait for 5 seconds)
+        if timer_started:  ## to stop the video recording, if the timer already started then check if the timer is past it's five seconds
+            if time.time() - recording_stopped_time >= seconds_recorded_after_leaving:
+                recording = False  ## when already detected before and then left the frame(5 seconds over)
+                timer_started = False
+                outstr.release()
+                print('...Recording Stopped!')
+        else:  ## when detected for the first time and still in the frame for the first five seconds
+            timer_started = True
+            recording_stopped_time = time.time()  ## gives the current time
+
+    if recording:  ## only if someone detected in our frame and we are recording then only write to our output stream
+        outstr.write(frame)  ## saving our frames after closing the output stream
+
+    # for (x, y, width, height) in faces:  ## drawing rectangular faces on our image as for loop
+        # cv2.rectangle(frame, (x, y), (x + width, y + height), (255, 0, 0), 3)  ## frame is my cover image
+                         ## top-left       bottom-right   blue-color(BGR) & line-thickness (all for rectangle)
+    
+    # for (x, y, width, height) in bodies:
+        # cv2.rectangle(frame, (x, y), (x + width, y + height), (255, 0, 0), 3)
+
+    cv2.imshow('Security Camera', frame)  ## title and display(we can COMMENT it out)
+
+    if cv2.waitKey(1) == ord('q'):  ## to exit webcam
+        break
+
+outstr.release()  ## saved the video in our directory
+webcam.release()  ## third party can now use the webcam
+cv2.destroyAllWindows()  ## destroys the windows that will show our webcam
+ 
